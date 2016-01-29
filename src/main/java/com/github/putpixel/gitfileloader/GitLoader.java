@@ -87,7 +87,7 @@ public class GitLoader {
                 @Override
                 protected JSch createDefaultJSch(FS fs) throws JSchException {
                     JSch defaultJSch = super.createDefaultJSch(fs);
-                    defaultJSch.addIdentity(setup.getPrivateKeyPath());
+                    defaultJSch.addIdentity(setup.getPrivateKeyPath(), setup.getPassword());
                     return defaultJSch;
                 }
             });
