@@ -5,7 +5,13 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -28,7 +34,9 @@ import org.eclipse.jgit.transport.SshSessionFactory;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.eclipse.jgit.util.FS;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
@@ -98,38 +106,59 @@ public class GitLoader {
         }
     }
 
-    public String checkoutAndGetFileContent(String filePathInRepo) {
+    public String checkoutAndGetFileContent(String filePathInRemoteRepo) {
         try {
-            Ref headRef = repo.findRef(Constants.HEAD);
-            ObjectId branch = repo.resolve(setup.getRemoteBranch());
-            RevCommit headCommit = null;
-            RevCommit newCommit = null;
-            try (RevWalk revWalk = new RevWalk(repo)) {
-                AnyObjectId headId = headRef.getObjectId();
-                headCommit = headId == null ? null : revWalk.parseCommit(headId);
-                newCommit = revWalk.parseCommit(branch);
-            }
-            RevTree headTree = headCommit == null ? null : headCommit.getTree();
-            DirCacheCheckout dco;
-            DirCache dc = repo.lockDirCache();
-            try {
-                dco = new DirCacheCheckout(repo, headTree, dc, newCommit.getTree()) {
-                    @Override
-                    public void prescanOneTree() throws MissingObjectException, IncorrectObjectTypeException, CorruptObjectException, IOException {
-                        super.prescanOneTree();
-                        Preconditions.checkState(getUpdated().containsKey(filePathInRepo), "No path found in repo: " + filePathInRepo);
-                        String value = getUpdated().get(filePathInRepo);
-                        getUpdated().clear();
-                        getUpdated().put(filePathInRepo, value);
-                    }
-                };
-                dco.setFailOnConflict(true);
-                dco.checkout();
-            } finally {
-                dc.unlock();
-            }
+            doCheckout(ImmutableList.of(filePathInRemoteRepo));
+            return com.google.common.io.Files.toString(buildFileInLocalRepo(filePathInRemoteRepo), Charset.defaultCharset());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 
-            return com.google.common.io.Files.toString(new File(localPath + "/" + filePathInRepo), Charset.defaultCharset());
+    private File buildFileInLocalRepo(String filePathInRepo) {
+        return new File(localPath + "/" + filePathInRepo);
+    }
+
+    private void doCheckout(Collection<String> filePathsInRepo) throws Exception {
+        Ref headRef = repo.findRef(Constants.HEAD);
+        ObjectId branch = repo.resolve(setup.getRemoteBranch());
+        RevCommit headCommit = null;
+        RevCommit newCommit = null;
+        try (RevWalk revWalk = new RevWalk(repo)) {
+            AnyObjectId headId = headRef.getObjectId();
+            headCommit = headId == null ? null : revWalk.parseCommit(headId);
+            newCommit = revWalk.parseCommit(branch);
+        }
+        RevTree headTree = headCommit == null ? null : headCommit.getTree();
+        DirCacheCheckout dco;
+        DirCache dc = repo.lockDirCache();
+        try {
+            dco = new DirCacheCheckout(repo, headTree, dc, newCommit.getTree()) {
+                @Override
+                public void prescanOneTree() throws MissingObjectException, IncorrectObjectTypeException, CorruptObjectException, IOException {
+                    super.prescanOneTree();
+                    Set<String> unknownPathes = filePathsInRepo.stream().filter(it -> !getUpdated().containsKey(it)).collect(Collectors.toSet());
+                    Preconditions.checkState(unknownPathes.isEmpty(), "No path(s) found in repo: " + Joiner.on("\n").join(unknownPathes));
+
+                    Map<String, String> newUpdated = new HashMap<>();
+                    // Nulls are possible
+                    filePathsInRepo.stream().forEach(it -> newUpdated.put(it, getUpdated().get(it)));
+
+                    getUpdated().clear();
+                    getUpdated().putAll(newUpdated);
+                }
+            };
+            dco.setFailOnConflict(true);
+            dco.checkout();
+        } finally {
+            dc.unlock();
+        }
+    }
+
+    public Map<String, File> checkoutFiles(Collection<String> pathes) {
+        try {
+            doCheckout(pathes);
+            return pathes.stream().collect(Collectors.toMap(Function.identity(), path -> buildFileInLocalRepo(path)));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

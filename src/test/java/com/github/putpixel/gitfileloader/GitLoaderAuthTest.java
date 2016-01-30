@@ -1,13 +1,6 @@
 package com.github.putpixel.gitfileloader;
 
-import static org.hamcrest.Matchers.containsString;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-
-import java.io.File;
-
 import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 public class GitLoaderAuthTest {
