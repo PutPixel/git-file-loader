@@ -1,3 +1,3 @@
 # git file loader
-Loads selected files from remote git repository.
-Load single or several file from git repository on fly. No need to checkout whole branch.
+Provides convenient API to load single or multiple files from remote GIT
+repository using JGIT without checking out rest of the files

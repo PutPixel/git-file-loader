@@ -37,11 +37,21 @@ import org.eclipse.jgit.util.FS;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
 
-public class GitLoader {
+/**
+ * Provides convenient API to load single or multiple files from remote GIT
+ * repository using JGIT without checking out rest of the files
+ *
+ * @author putpixel
+ *
+ */
+public class GitLoader implements AutoCloseable {
+
+    private boolean initialized;
 
     private GitParams setup;
 
@@ -61,6 +71,11 @@ public class GitLoader {
         }
     }
 
+    @Override
+    public void close() throws Exception {
+        deleteLocalRepository();
+    }
+
     public void deleteLocalRepository() {
         repo.close();
         new File(localPath).delete();
@@ -70,13 +85,24 @@ public class GitLoader {
         return localPath;
     }
 
+    private void assertInitialized() {
+        Preconditions.checkState(initialized, "repository already initialized, please make sure you called 'cloneRemoteRepository' method");
+    }
+
+    /**
+     * This methods used to initialize local repository in temporary folder, this folder will be used to checkout files. As soon as loader is closed this folder
+     * will be deleted
+     */
     public void cloneRemoteRepository() {
+        Preconditions.checkState(!initialized, "repository already initialized");
         try {
             Git.cloneRepository()
                     .setURI(setup.getRepositoryUrl())
                     .setCredentialsProvider(createCredentials())
                     .setNoCheckout(true)
-                    .setDirectory(new File(localPath)).call();
+                    .setDirectory(new File(localPath))
+                    .call();
+            initialized = true;
         } catch (GitAPIException e) {
             throw new RuntimeException(e);
         }
@@ -87,7 +113,6 @@ public class GitLoader {
             SshSessionFactory.setInstance(new JschConfigSessionFactory() {
                 @Override
                 protected void configure(OpenSshConfig.Host host, Session session) {
-                    // This can be removed, but the overriden method is required since JschConfigSessionFactory is abstract
                     session.setConfig("StrictHostKeyChecking", "false");
                     session.setPassword(setup.getPassword());
                 }
@@ -106,20 +131,26 @@ public class GitLoader {
         }
     }
 
+    /**
+     * Checkout single file from remote repository and returns file's content as string
+     *
+     * @param filePathInRemoteRepo
+     * @return file's content as string
+     */
     public String checkoutAndGetFileContent(String filePathInRemoteRepo) {
         try {
-            doCheckout(ImmutableList.of(filePathInRemoteRepo));
-            return com.google.common.io.Files.toString(buildFileInLocalRepo(filePathInRemoteRepo), Charset.defaultCharset());
+            return com.google.common.io.Files.toString(checkoutFile(filePathInRemoteRepo), Charset.defaultCharset());
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    private File buildFileInLocalRepo(String filePathInRepo) {
-        return new File(localPath + "/" + filePathInRepo);
+    private File buildFileInLocalRepo(String filePathInRemoteRepo) {
+        return new File(localPath + "/" + filePathInRemoteRepo);
     }
 
-    private void doCheckout(Collection<String> filePathsInRepo) throws Exception {
+    private void doCheckout(Collection<String> pathsInRemoteRepo) throws Exception {
+        assertInitialized();
         Ref headRef = repo.findRef(Constants.HEAD);
         ObjectId branch = repo.resolve(setup.getRemoteBranch());
         RevCommit headCommit = null;
@@ -137,12 +168,14 @@ public class GitLoader {
                 @Override
                 public void prescanOneTree() throws MissingObjectException, IncorrectObjectTypeException, CorruptObjectException, IOException {
                     super.prescanOneTree();
-                    Set<String> unknownPathes = filePathsInRepo.stream().filter(it -> !getUpdated().containsKey(it)).collect(Collectors.toSet());
-                    Preconditions.checkState(unknownPathes.isEmpty(), "No path(s) found in repo: " + Joiner.on("\n").join(unknownPathes));
+                    Set<String> unknownPathes = pathsInRemoteRepo.stream()
+                            .filter(it -> !getUpdated().containsKey(it))
+                            .collect(Collectors.toSet());
+                    Preconditions.checkState(unknownPathes.isEmpty(), "Path(s) not found in remote repo: " + Joiner.on("\n").join(unknownPathes));
 
                     Map<String, String> newUpdated = new HashMap<>();
-                    // Nulls are possible
-                    filePathsInRepo.stream().forEach(it -> newUpdated.put(it, getUpdated().get(it)));
+                    // Nulls are possible, collectors can't be used :(
+                    pathsInRemoteRepo.stream().forEach(it -> newUpdated.put(it, getUpdated().get(it)));
 
                     getUpdated().clear();
                     getUpdated().putAll(newUpdated);
@@ -155,10 +188,27 @@ public class GitLoader {
         }
     }
 
-    public Map<String, File> checkoutFiles(Collection<String> pathes) {
+    /**
+     * Checkout single file from remote repository and returns file in local one. As soon as loader closed file will be deleted
+     *
+     * @param pathInRemoteRepo
+     * @return file in local repository
+     */
+    public File checkoutFile(String pathInRemoteRepo) {
+        Map<String, File> files = checkoutFiles(ImmutableList.of(pathInRemoteRepo));
+        return Iterables.getOnlyElement(files.values());
+    }
+
+    /**
+     * Checkout multiple file in one go
+     *
+     * @param pathesInRemoteRepo
+     * @return original path in remote repository to file path in local one
+     */
+    public Map<String, File> checkoutFiles(Collection<String> pathesInRemoteRepo) {
         try {
-            doCheckout(pathes);
-            return pathes.stream().collect(Collectors.toMap(Function.identity(), path -> buildFileInLocalRepo(path)));
+            doCheckout(pathesInRemoteRepo);
+            return pathesInRemoteRepo.stream().collect(Collectors.toMap(Function.identity(), path -> buildFileInLocalRepo(path)));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

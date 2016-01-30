@@ -1,6 +1,10 @@
 package com.github.putpixel.gitfileloader;
 
-public class GitParams {
+import java.io.Serializable;
+
+public class GitParams implements Serializable {
+
+    private static final long serialVersionUID = -4620085740541627832L;
 
     private String privateKeyPath;
     private String login;
