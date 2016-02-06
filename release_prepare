@@ -1,1 +1,1 @@
-mvn release:clean release:prepare
+mvn release:clean release:prepare -Prelease-sign-artifacts
