@@ -3,7 +3,7 @@
     <groupId>com.github.putpixel</groupId>
     <artifactId>git-file-loader</artifactId>
     <packaging>jar</packaging>
-    <version>1.0</version>
+    <version>1.1-SNAPSHOT</version>
     <name>GIT file loader</name>
     <url>https://github.com/PutPixel/git-file-loader</url>
 
