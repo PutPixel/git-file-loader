@@ -3,7 +3,7 @@
     <groupId>com.github.putpixel</groupId>
     <artifactId>git-file-loader</artifactId>
     <packaging>jar</packaging>
-    <version>1.4</version>
+    <version>1.5-SNAPSHOT</version>
     <name>GIT file loader</name>
     <description>Provides convenient API to load single or multiple files from remote GIT
         repository using JGIT without checking out rest of the files
