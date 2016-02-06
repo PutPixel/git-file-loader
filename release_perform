@@ -1,1 +1,1 @@
-mvn release:perform -Prelease-sign-artifacts
+mvn release:perform -Prelease
