@@ -5,8 +5,10 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -32,6 +34,7 @@ import org.eclipse.jgit.transport.JschConfigSessionFactory;
 import org.eclipse.jgit.transport.OpenSshConfig;
 import org.eclipse.jgit.transport.SshSessionFactory;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.util.FS;
 
 import com.google.common.base.Joiner;
@@ -66,7 +69,7 @@ public class GitLoader implements AutoCloseable {
             Path localDir = Files.createTempDirectory("git-loader" + postfix);
             localPath = localDir.toString();
             repo = new FileRepository(localPath + "/.git");
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -147,6 +150,52 @@ public class GitLoader implements AutoCloseable {
 
     private File buildFileInLocalRepo(String filePathInRemoteRepo) {
         return new File(localPath + "/" + filePathInRemoteRepo);
+    }
+
+    /**
+     * List all files in remote master with they object ids
+     *
+     */
+    public List<FileInRemoteRepository> listFilesInRemoteMaster() {
+        try {
+            return doListFiles("refs/remotes/origin/master");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * List all files by given reference with they object ids
+     *
+     */
+    public List<FileInRemoteRepository> listFilesByRef(String ref) {
+        try {
+            return doListFiles(ref);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private List<FileInRemoteRepository> doListFiles(String pathRef) throws Exception {
+        assertInitialized();
+        Preconditions.checkNotNull(pathRef);
+
+        List<FileInRemoteRepository> result = new ArrayList<>();
+        try (RevWalk walk = new RevWalk(repo)) {
+            RevCommit parseCommit = walk.parseCommit(repo.resolve(pathRef));
+            RevTree tree = parseCommit.getTree();
+
+            try (TreeWalk treeWalk = new TreeWalk(repo)) {
+                treeWalk.addTree(tree);
+                treeWalk.setRecursive(true);
+                while (treeWalk.next()) {
+                    FileInRemoteRepository fileInRemoteRepository = new FileInRemoteRepository(treeWalk.getObjectId(0).getName(), treeWalk.getPathString());
+                    result.add(fileInRemoteRepository);
+                }
+
+                return result;
+            }
+        }
     }
 
     private void doCheckout(Collection<String> pathsInRemoteRepo) throws Exception {

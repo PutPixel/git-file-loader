@@ -1,6 +1,7 @@
 package com.github.putpixel.gitfileloader;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
@@ -8,6 +9,7 @@ import static org.junit.Assert.fail;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.List;
 import java.util.Map;
 
 import org.hamcrest.Matchers;
@@ -73,6 +75,15 @@ public class GitLoaderTest {
 
         String file1Content = Files.toString(result, Charset.defaultCharset());
         assertThat(file1Content, containsString("Test Тест"));
+    }
+
+    @Test
+    public void list_files_in_repo() throws Exception {
+        List<String> shouldBeInRepo = ImmutableList.of("src/test/resources/test.txt", "src/test/resources/test2.txt");
+
+        List<FileInRemoteRepository> files = gitLoader.listFilesInRemoteMaster();
+        long foundFiles = files.stream().filter(file -> shouldBeInRepo.contains(file.getPathInRepo())).count();
+        assertThat(Long.valueOf(foundFiles).intValue(), is(shouldBeInRepo.size()));
     }
 
     @Test(expected = RuntimeException.class)
