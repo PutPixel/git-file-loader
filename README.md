@@ -8,6 +8,6 @@ How to use: https://github.com/PutPixel/git-file-loader/blob/master/src/test/jav
 <dependency>
   <groupId>com.github.putpixel</groupId>
   <artifactId>git-file-loader</artifactId>
-  <version>1.4</version>
+  <version>1.5</version>
 </dependency>
 ```
